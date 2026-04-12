@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
 	"gophermart/internal/domain"
+	"gophermart/internal/middleware"
 )
 
 // AuthProvider is the subset of AuthService used by auth handlers.
@@ -42,6 +44,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r = middleware.AddLogFields(r, zap.String("login", req.Login))
 	token, err := h.auth.Register(r.Context(), req.Login, req.Password)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserAlreadyExists) {
@@ -64,6 +67,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r = middleware.AddLogFields(r, zap.String("login", req.Login))
 	token, err := h.auth.Login(r.Context(), req.Login, req.Password)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidCredentials) {

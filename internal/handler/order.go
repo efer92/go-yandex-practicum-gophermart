@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"gophermart/internal/domain"
 	"gophermart/internal/middleware"
 )
@@ -52,6 +53,7 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r = middleware.AddLogFields(r, zap.String("order", number))
 	userID := middleware.UserIDFromCtx(r.Context())
 	_, err = h.orders.SubmitOrder(r.Context(), userID, number)
 	if err != nil {
