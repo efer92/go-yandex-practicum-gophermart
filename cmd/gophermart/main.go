@@ -1,3 +1,93 @@
+// Package main is the entry point for the Gophermart loyalty system service.
 package main
 
-func main() {}
+import (
+	"context"
+	"errors"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"go.uber.org/zap"
+
+	"gophermart/internal/accrual"
+	"gophermart/internal/config"
+	"gophermart/internal/handler"
+	"gophermart/internal/repository/postgres"
+	"gophermart/internal/service"
+)
+
+func main() {
+	log, _ := zap.NewProduction()
+	defer log.Sync()
+
+	cfg := config.Load()
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	// Connect to PostgreSQL and run migrations.
+	pool, err := postgres.NewPool(ctx, cfg.DatabaseURI)
+	if err != nil {
+		log.Fatal("connect to database", zap.Error(err))
+	}
+	defer pool.Close()
+
+	if err := postgres.RunMigrations(pool); err != nil {
+		log.Fatal("run migrations", zap.Error(err))
+	}
+
+	// Build repositories.
+	userRepo := postgres.NewUserRepository(pool)
+	orderRepo := postgres.NewOrderRepository(pool)
+	balanceRepo := postgres.NewBalanceRepository(pool)
+	withdrawalRepo := postgres.NewWithdrawalRepository(pool)
+
+	// Build services.
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
+	orderSvc := service.NewOrderService(orderRepo)
+	balanceSvc := service.NewBalanceService(balanceRepo)
+	withdrawalSvc := service.NewWithdrawalService(withdrawalRepo)
+
+	// Build HTTP handlers.
+	authHandler := handler.NewAuthHandler(authSvc)
+	orderHandler := handler.NewOrderHandler(orderSvc)
+	balanceHandler := handler.NewBalanceHandler(balanceSvc)
+	withdrawalHandler := handler.NewWithdrawalHandler(withdrawalSvc)
+
+	router := handler.NewRouter(authHandler, orderHandler, balanceHandler, withdrawalHandler, authSvc, log)
+
+	// Start accrual poller in background.
+	if cfg.AccrualSystemAddress != "" {
+		accrualClient := accrual.NewClient(cfg.AccrualSystemAddress)
+		poller := accrual.NewPoller(accrualClient, orderRepo, log)
+		go poller.Run(ctx)
+	} else {
+		log.Warn("ACCRUAL_SYSTEM_ADDRESS not set; accrual poller disabled")
+	}
+
+	// Start HTTP server with graceful shutdown.
+	srv := &http.Server{
+		Addr:    cfg.RunAddress,
+		Handler: router,
+	}
+
+	go func() {
+		log.Info("starting server", zap.String("addr", cfg.RunAddress))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal("listen and serve", zap.Error(err))
+		}
+	}()
+
+	<-ctx.Done()
+	log.Info("shutting down...")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("graceful shutdown", zap.Error(err))
+	}
+}
