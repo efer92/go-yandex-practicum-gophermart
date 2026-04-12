@@ -21,20 +21,16 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-// AddLogFields attaches extra zap fields to the request context.
-// Handlers call this to enrich the log line written by the Logger middleware.
-func AddLogFields(r *http.Request, fields ...zap.Field) *http.Request {
-	existing, _ := r.Context().Value(logFieldsKey{}).([]zap.Field)
-	updated := make([]zap.Field, len(existing)+len(fields))
-	copy(updated, existing)
-	copy(updated[len(existing):], fields)
-	return r.WithContext(context.WithValue(r.Context(), logFieldsKey{}, updated))
-}
-
-// logFieldsFromCtx retrieves extra log fields stored by AddLogFields.
-func logFieldsFromCtx(ctx context.Context) []zap.Field {
-	fields, _ := ctx.Value(logFieldsKey{}).([]zap.Field)
-	return fields
+// AddLogFields appends extra zap fields that the Logger middleware will include
+// in the log line for this request. The Logger must have run first (it seeds the
+// pointer in the context); calling this outside of a Logger-wrapped handler is a
+// no-op.
+func AddLogFields(r *http.Request, fields ...zap.Field) {
+	ptr, _ := r.Context().Value(logFieldsKey{}).(*[]zap.Field)
+	if ptr == nil {
+		return
+	}
+	*ptr = append(*ptr, fields...)
 }
 
 // Logger returns middleware that logs each HTTP request using the given zap logger.
@@ -45,6 +41,10 @@ func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+
+			// Seed a mutable slice pointer so handlers can append fields via AddLogFields.
+			extra := &[]zap.Field{}
+			r = r.WithContext(context.WithValue(r.Context(), logFieldsKey{}, extra))
 
 			next.ServeHTTP(rw, r)
 
@@ -59,7 +59,7 @@ func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 				fields = append(fields, zap.Int64("user_id", uid))
 			}
 
-			fields = append(fields, logFieldsFromCtx(r.Context())...)
+			fields = append(fields, *extra...)
 
 			switch {
 			case rw.status >= 500:
