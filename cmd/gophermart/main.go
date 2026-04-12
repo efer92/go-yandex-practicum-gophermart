@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"gophermart/internal/accrual"
+	"gophermart/internal/admin"
 	"gophermart/internal/config"
 	"gophermart/internal/handler"
 	"gophermart/internal/repository/postgres"
@@ -57,7 +58,18 @@ func main() {
 	balanceHandler := handler.NewBalanceHandler(balanceSvc)
 	withdrawalHandler := handler.NewWithdrawalHandler(withdrawalSvc)
 
-	router := handler.NewRouter(authHandler, orderHandler, balanceHandler, withdrawalHandler, authSvc, log)
+	userRouter := handler.NewRouter(authHandler, orderHandler, balanceHandler, withdrawalHandler, authSvc, log)
+
+	// Build admin panel.
+	adminRepo := admin.NewPostgresRepo(pool)
+	adminSvc := admin.NewService(cfg.AdminLogin, cfg.AdminPassword, cfg.JWTSecret)
+	adminHandler := admin.NewHandler(adminSvc, adminRepo)
+	adminRouter := admin.NewRouter(adminHandler, adminSvc)
+
+	// Mount user API and admin panel on a single top-level mux.
+	mux := http.NewServeMux()
+	mux.Handle("/admin/", http.StripPrefix("/admin", adminRouter))
+	mux.Handle("/", userRouter)
 
 	// Start accrual poller in background.
 	if cfg.AccrualSystemAddress != "" {
@@ -71,7 +83,7 @@ func main() {
 	// Start HTTP server with graceful shutdown.
 	srv := &http.Server{
 		Addr:    cfg.RunAddress,
-		Handler: router,
+		Handler: mux,
 	}
 
 	go func() {
