@@ -43,41 +43,47 @@ var ErrNotRegistered = fmt.Errorf("order not registered in accrual system")
 type Client struct {
 	baseURL    string
 	httpClient *retryablehttp.Client
+	log        *zap.Logger
 }
 
 // NewClient creates a new accrual Client targeting the given base URL.
 // The client will automatically retry on transient errors (5xx, connection issues)
 // up to 3 times with exponential backoff.
 func NewClient(baseURL string) *Client {
+	return newClient(baseURL, zap.NewNop())
+}
+
+// NewClientWithLogger creates a Client that logs retry attempts via zap.
+func NewClientWithLogger(baseURL string, log *zap.Logger) *Client {
+	return newClient(baseURL, log)
+}
+
+func newClient(baseURL string, log *zap.Logger) *Client {
 	rc := retryablehttp.NewClient()
 	rc.RetryMax = 3
 	rc.RetryWaitMin = 500 * time.Millisecond
 	rc.RetryWaitMax = 5 * time.Second
 	rc.HTTPClient = &http.Client{Timeout: 10 * time.Second}
-	rc.Logger = nil // silence default stdlib logger
-
-	// Only retry on connection errors and 5xx; not on 429 (handled manually).
-	rc.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
-		if err != nil {
-			return true, nil
-		}
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return false, nil
-		}
-		return retryablehttp.DefaultRetryPolicy(ctx, resp, err)
-	}
+	rc.Logger = &zapRetryLogger{log: log.Sugar()}
+	rc.CheckRetry = accrualRetryPolicy
 
 	return &Client{
 		baseURL:    baseURL,
 		httpClient: rc,
+		log:        log,
 	}
 }
 
-// NewClientWithLogger creates a Client that logs retry attempts via zap.
-func NewClientWithLogger(baseURL string, log *zap.Logger) *Client {
-	c := NewClient(baseURL)
-	c.httpClient.Logger = &zapRetryLogger{log: log.Sugar()}
-	return c
+// accrualRetryPolicy retries on connection errors and 5xx responses,
+// but not on 429 — rate-limit handling is done by the caller.
+func accrualRetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	if err != nil {
+		return true, nil
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return false, nil
+	}
+	return retryablehttp.DefaultRetryPolicy(ctx, resp, err)
 }
 
 // GetOrder fetches the accrual status for the given order number.
@@ -107,7 +113,12 @@ func (c *Client) GetOrder(ctx context.Context, number string) (*OrderResult, err
 		return nil, ErrNotRegistered
 
 	case http.StatusTooManyRequests:
-		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+		retryAfter, err := parseRetryAfter(resp.Header.Get("Retry-After"))
+		if err != nil {
+			c.log.Warn("invalid Retry-After header, using default",
+				zap.String("header", resp.Header.Get("Retry-After")),
+				zap.Error(err))
+		}
 		return nil, &ErrRateLimit{RetryAfter: retryAfter}
 
 	default:
@@ -116,15 +127,16 @@ func (c *Client) GetOrder(ctx context.Context, number string) (*OrderResult, err
 }
 
 // parseRetryAfter parses the Retry-After header value (seconds integer).
-func parseRetryAfter(header string) time.Duration {
+// Returns 60s as fallback and an error if the header is non-empty but invalid.
+func parseRetryAfter(header string) (time.Duration, error) {
 	if header == "" {
-		return 60 * time.Second
+		return 60 * time.Second, nil
 	}
 	secs, err := strconv.Atoi(header)
 	if err != nil || secs <= 0 {
-		return 60 * time.Second
+		return 60 * time.Second, fmt.Errorf("parse Retry-After %q: %w", header, err)
 	}
-	return time.Duration(secs) * time.Second
+	return time.Duration(secs) * time.Second, nil
 }
 
 // zapRetryLogger adapts zap.SugaredLogger to retryablehttp.LeveledLogger.

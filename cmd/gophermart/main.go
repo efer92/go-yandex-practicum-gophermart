@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,7 +24,8 @@ import (
 func main() {
 	log, err := zap.NewProduction()
 	if err != nil {
-		panic("init logger: " + err.Error())
+		fmt.Fprintf(os.Stderr, "init logger: %v\n", err)
+		os.Exit(1)
 	}
 	defer log.Sync()
 

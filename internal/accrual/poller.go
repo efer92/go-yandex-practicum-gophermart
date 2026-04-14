@@ -42,9 +42,19 @@ func (p *Poller) isPaused() bool {
 	return until > 0 && time.Now().UnixNano() < until
 }
 
-// setPause sets a rate-limit pause of duration d for all workers.
+// setPause extends the rate-limit pause to at least now+d.
+// If pauseUntil already holds a more distant moment, it is left unchanged.
 func (p *Poller) setPause(d time.Duration) {
-	p.pauseUntil.Store(time.Now().Add(d).UnixNano())
+	newUntil := time.Now().Add(d).UnixNano()
+	for {
+		current := p.pauseUntil.Load()
+		if current >= newUntil {
+			return
+		}
+		if p.pauseUntil.CompareAndSwap(current, newUntil) {
+			return
+		}
+	}
 }
 
 // Run starts the polling loop. It blocks until ctx is cancelled.
