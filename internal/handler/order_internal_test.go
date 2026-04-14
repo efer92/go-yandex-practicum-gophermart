@@ -23,7 +23,7 @@ func TestUploadOrder_InternalError(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/orders", strings.NewReader("12345678903"))
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.UploadOrder(rr, req)
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -38,7 +38,7 @@ func TestListOrders_InternalError(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/orders", nil)
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.ListOrders(rr, req)
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)

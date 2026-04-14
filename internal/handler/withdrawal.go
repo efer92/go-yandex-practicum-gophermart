@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"gophermart/internal/domain"
@@ -34,7 +35,11 @@ type withdrawalResponse struct {
 
 // ListWithdrawals handles GET /api/user/withdrawals.
 func (h *WithdrawalHandler) ListWithdrawals(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserIDFromCtx(r.Context())
+	userID, err := strconv.ParseInt(middleware.UserIDFromCtx(r.Context()), 10, 64)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	list, err := h.withdrawals.ListWithdrawals(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)

@@ -21,7 +21,10 @@ import (
 )
 
 func main() {
-	log, _ := zap.NewProduction()
+	log, err := zap.NewProduction()
+	if err != nil {
+		panic("init logger: " + err.Error())
+	}
 	defer log.Sync()
 
 	cfg := config.Load()
@@ -63,7 +66,7 @@ func main() {
 	// Build admin panel.
 	adminRepo := admin.NewPostgresRepo(pool)
 	adminSvc := admin.NewService(cfg.AdminLogin, cfg.AdminPassword, cfg.JWTSecret)
-	adminHandler := admin.NewHandler(adminSvc, adminRepo)
+	adminHandler := admin.NewHandler(adminSvc, adminRepo, log)
 	adminRouter := admin.NewRouter(adminHandler, adminSvc)
 
 	// Mount user API and admin panel on a single top-level mux.
@@ -73,7 +76,7 @@ func main() {
 
 	// Start accrual poller in background.
 	if cfg.AccrualSystemAddress != "" {
-		accrualClient := accrual.NewClient(cfg.AccrualSystemAddress)
+		accrualClient := accrual.NewClientWithLogger(cfg.AccrualSystemAddress, log)
 		poller := accrual.NewPoller(accrualClient, orderRepo, log)
 		go poller.Run(ctx)
 	} else {
@@ -86,14 +89,19 @@ func main() {
 		Handler: mux,
 	}
 
+	serverErr := make(chan error, 1)
 	go func() {
 		log.Info("starting server", zap.String("addr", cfg.RunAddress))
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal("listen and serve", zap.Error(err))
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
 		}
 	}()
 
-	<-ctx.Done()
+	select {
+	case err := <-serverErr:
+		log.Error("server error", zap.Error(err))
+	case <-ctx.Done():
+	}
 	log.Info("shutting down...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)

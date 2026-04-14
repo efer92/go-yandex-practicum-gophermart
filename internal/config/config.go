@@ -26,6 +26,8 @@ type Config struct {
 
 // Load parses configuration from flags and environment variables.
 // Flag values override environment variables when both are set.
+// LookupEnv is used to distinguish between an unset variable and one explicitly
+// set to an empty string — the latter is honoured as a valid value.
 func Load() *Config {
 	cfg := &Config{}
 
@@ -37,32 +39,31 @@ func Load() *Config {
 	fs.Parse(os.Args[1:])
 
 	if cfg.RunAddress == "" {
-		cfg.RunAddress = os.Getenv("RUN_ADDRESS")
+		cfg.RunAddress = lookupEnvOrDefault("RUN_ADDRESS", "localhost:8080")
 	}
 	if cfg.DatabaseURI == "" {
-		cfg.DatabaseURI = os.Getenv("DATABASE_URI")
+		if v, ok := os.LookupEnv("DATABASE_URI"); ok {
+			cfg.DatabaseURI = v
+		}
 	}
 	if cfg.AccrualSystemAddress == "" {
-		cfg.AccrualSystemAddress = os.Getenv("ACCRUAL_SYSTEM_ADDRESS")
+		if v, ok := os.LookupEnv("ACCRUAL_SYSTEM_ADDRESS"); ok {
+			cfg.AccrualSystemAddress = v
+		}
 	}
 
-	cfg.JWTSecret = os.Getenv("JWT_SECRET")
-	if cfg.JWTSecret == "" {
-		cfg.JWTSecret = "gophermart-default-secret-change-in-prod"
-	}
-
-	if cfg.RunAddress == "" {
-		cfg.RunAddress = "localhost:8080"
-	}
-
-	cfg.AdminLogin = os.Getenv("ADMIN_LOGIN")
-	if cfg.AdminLogin == "" {
-		cfg.AdminLogin = "admin"
-	}
-	cfg.AdminPassword = os.Getenv("ADMIN_PASSWORD")
-	if cfg.AdminPassword == "" {
-		cfg.AdminPassword = "admin"
-	}
+	cfg.JWTSecret = lookupEnvOrDefault("JWT_SECRET", "gophermart-default-secret-change-in-prod")
+	cfg.AdminLogin = lookupEnvOrDefault("ADMIN_LOGIN", "admin")
+	cfg.AdminPassword = lookupEnvOrDefault("ADMIN_PASSWORD", "admin")
 
 	return cfg
+}
+
+// lookupEnvOrDefault returns the environment variable value if it is set (even
+// if empty), or defaultVal if the variable is not defined at all.
+func lookupEnvOrDefault(key, defaultVal string) string {
+	if v, ok := os.LookupEnv(key); ok {
+		return v
+	}
+	return defaultVal
 }

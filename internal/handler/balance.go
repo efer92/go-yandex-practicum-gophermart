@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"gophermart/internal/domain"
 	"gophermart/internal/middleware"
@@ -30,7 +31,11 @@ func NewBalanceHandler(balance BalanceProvider) *BalanceHandler {
 
 // GetBalance handles GET /api/user/balance.
 func (h *BalanceHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserIDFromCtx(r.Context())
+	userID, err := strconv.ParseInt(middleware.UserIDFromCtx(r.Context()), 10, 64)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	bal, err := h.balance.GetBalance(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -53,8 +58,12 @@ func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := middleware.UserIDFromCtx(r.Context())
-	err := h.balance.Withdraw(r.Context(), userID, req.Order, req.Sum)
+	userID, err := strconv.ParseInt(middleware.UserIDFromCtx(r.Context()), 10, 64)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	err = h.balance.Withdraw(r.Context(), userID, req.Order, req.Sum)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrInvalidOrderNumber):

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"go.uber.org/zap"
 )
 
 // dataProvider is implemented by PostgresRepo.
@@ -24,11 +26,12 @@ type loginProvider interface {
 type Handler struct {
 	svc  loginProvider
 	repo dataProvider
+	log  *zap.Logger
 }
 
 // NewHandler creates a new admin Handler.
-func NewHandler(svc loginProvider, repo dataProvider) *Handler {
-	return &Handler{svc: svc, repo: repo}
+func NewHandler(svc loginProvider, repo dataProvider, log *zap.Logger) *Handler {
+	return &Handler{svc: svc, repo: repo, log: log}
 }
 
 type loginRequest struct {
@@ -41,17 +44,18 @@ type loginRequest struct {
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Login == "" || req.Password == "" {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
 	token, err := h.svc.Login(req.Login, req.Password)
 	if err != nil {
 		if errors.Is(err, ErrInvalidAdminCredentials) {
-			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.log.Error("admin login", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -63,7 +67,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.repo.GetStats(r.Context())
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.log.Error("admin get stats", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, stats)
@@ -73,7 +78,8 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.repo.GetUsers(r.Context())
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.log.Error("admin get users", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if users == nil {
@@ -86,7 +92,8 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	orders, err := h.repo.GetOrders(r.Context())
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.log.Error("admin get orders", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if orders == nil {
@@ -99,7 +106,8 @@ func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 	withdrawals, err := h.repo.GetWithdrawals(r.Context())
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.log.Error("admin get withdrawals", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if withdrawals == nil {

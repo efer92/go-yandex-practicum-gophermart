@@ -55,8 +55,8 @@ func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 				zap.Duration("duration", time.Since(start)),
 			}
 
-			if uid := UserIDFromCtx(r.Context()); uid != 0 {
-				fields = append(fields, zap.Int64("user_id", uid))
+			if uid := UserIDFromCtx(r.Context()); uid != "" {
+				fields = append(fields, zap.String("user_id", uid))
 			}
 
 			fields = append(fields, *extra...)

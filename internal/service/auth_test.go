@@ -42,7 +42,7 @@ func TestRegister_Success(t *testing.T) {
 	// Token must be valid and contain the right user ID.
 	userID, err := svc.ValidateToken(token)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), userID)
+	assert.Equal(t, "1", userID)
 }
 
 // TestRegister_Duplicate verifies ErrUserAlreadyExists is propagated.
@@ -82,7 +82,7 @@ func TestLogin_Success(t *testing.T) {
 
 	userID, err := svc.ValidateToken(token)
 	require.NoError(t, err)
-	assert.Equal(t, int64(42), userID)
+	assert.Equal(t, "42", userID)
 }
 
 // TestLogin_WrongPassword verifies ErrInvalidCredentials on wrong password.

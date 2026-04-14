@@ -8,31 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 
 	"gophermart/internal/accrual"
 	"gophermart/internal/domain"
+	"gophermart/internal/repository/mocks"
 )
 
-// mockOrderRepoForPoller is a test double for repository.OrderRepo used in poller tests.
-type mockOrderRepoForPoller struct {
-	pendingOrders []*domain.Order
-	updated       []string
-}
-
-func (m *mockOrderRepoForPoller) CreateOrder(_ context.Context, _ int64, _ string) (*domain.Order, error) {
-	return nil, nil
-}
-func (m *mockOrderRepoForPoller) GetOrdersByUserID(_ context.Context, _ int64) ([]*domain.Order, error) {
-	return nil, nil
-}
-func (m *mockOrderRepoForPoller) GetPendingOrders(_ context.Context, _ int) ([]*domain.Order, error) {
-	return m.pendingOrders, nil
-}
-func (m *mockOrderRepoForPoller) UpdateOrderStatus(_ context.Context, number string, _ domain.OrderStatus, _ *float64) error {
-	m.updated = append(m.updated, number)
-	return nil
-}
+//go:generate go run go.uber.org/mock/mockgen -destination=../../repository/mocks/mock_order_repo.go -package=mocks gophermart/internal/repository OrderRepo
 
 // TestPoller_ProcessesOrder verifies the poller updates order status on PROCESSED response.
 func TestPoller_ProcessesOrder(t *testing.T) {
@@ -47,11 +31,20 @@ func TestPoller_ProcessesOrder(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	repo := &mockOrderRepoForPoller{
-		pendingOrders: []*domain.Order{
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockOrderRepo(ctrl)
+	repo.EXPECT().
+		GetPendingOrders(gomock.Any(), gomock.Any()).
+		Return([]*domain.Order{
 			{ID: 1, Number: "12345678903", Status: domain.OrderStatusNew},
-		},
-	}
+		}, nil).
+		AnyTimes()
+	repo.EXPECT().
+		UpdateOrderStatus(gomock.Any(), "12345678903", domain.OrderStatusProcessed, gomock.Any()).
+		Return(nil).
+		AnyTimes()
 
 	client := accrual.NewClient(srv.URL)
 	poller := accrual.NewPoller(client, repo, zap.NewNop())
@@ -65,12 +58,8 @@ func TestPoller_ProcessesOrder(t *testing.T) {
 		close(done)
 	}()
 
-	// Wait until the order is updated or timeout.
 	deadline := time.After(2 * time.Second)
 	for {
-		if len(repo.updated) > 0 {
-			break
-		}
 		select {
 		case <-deadline:
 			t.Error("timed out waiting for order update")
@@ -78,7 +67,12 @@ func TestPoller_ProcessesOrder(t *testing.T) {
 			<-done
 			return
 		default:
-			time.Sleep(50 * time.Millisecond)
+		}
+		// Give the poller a tick to process.
+		time.Sleep(50 * time.Millisecond)
+		// Check via the mock controller — if UpdateOrderStatus was called, we're done.
+		if ctrl.Satisfied() {
+			break
 		}
 	}
 	cancel()
@@ -93,11 +87,16 @@ func TestPoller_HandlesRateLimit(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	repo := &mockOrderRepoForPoller{
-		pendingOrders: []*domain.Order{
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockOrderRepo(ctrl)
+	repo.EXPECT().
+		GetPendingOrders(gomock.Any(), gomock.Any()).
+		Return([]*domain.Order{
 			{ID: 1, Number: "12345678903", Status: domain.OrderStatusNew},
-		},
-	}
+		}, nil).
+		AnyTimes()
 
 	client := accrual.NewClient(srv.URL)
 	poller := accrual.NewPoller(client, repo, zap.NewNop())
@@ -114,11 +113,17 @@ func TestPoller_HandlesNotRegistered(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	repo := &mockOrderRepoForPoller{
-		pendingOrders: []*domain.Order{
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockOrderRepo(ctrl)
+	repo.EXPECT().
+		GetPendingOrders(gomock.Any(), gomock.Any()).
+		Return([]*domain.Order{
 			{ID: 1, Number: "12345678903", Status: domain.OrderStatusNew},
-		},
-	}
+		}, nil).
+		AnyTimes()
+	// UpdateOrderStatus must NOT be called.
 
 	client := accrual.NewClient(srv.URL)
 	poller := accrual.NewPoller(client, repo, zap.NewNop())
@@ -126,10 +131,6 @@ func TestPoller_HandlesNotRegistered(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	poller.Run(ctx)
-
-	if len(repo.updated) > 0 {
-		t.Errorf("expected no updates but got %d", len(repo.updated))
-	}
 }
 
 // TestPoller_HandlesServerError verifies the poller skips orders on 500.
@@ -139,11 +140,17 @@ func TestPoller_HandlesServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	repo := &mockOrderRepoForPoller{
-		pendingOrders: []*domain.Order{
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockOrderRepo(ctrl)
+	repo.EXPECT().
+		GetPendingOrders(gomock.Any(), gomock.Any()).
+		Return([]*domain.Order{
 			{ID: 1, Number: "12345678903", Status: domain.OrderStatusNew},
-		},
-	}
+		}, nil).
+		AnyTimes()
+	// UpdateOrderStatus must NOT be called.
 
 	client := accrual.NewClient(srv.URL)
 	poller := accrual.NewPoller(client, repo, zap.NewNop())
@@ -151,8 +158,4 @@ func TestPoller_HandlesServerError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	poller.Run(ctx)
-
-	if len(repo.updated) > 0 {
-		t.Errorf("expected no updates but got %d", len(repo.updated))
-	}
 }

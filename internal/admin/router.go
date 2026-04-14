@@ -39,7 +39,7 @@ func NewRouter(h *Handler, svc *Service) http.Handler {
 func serveUI(w http.ResponseWriter, r *http.Request) {
 	data, err := web.FS.ReadFile("admin.html")
 	if err != nil {
-		http.Error(w, "admin UI not found", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

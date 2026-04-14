@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/hashicorp/go-retryablehttp"
+	"go.uber.org/zap"
 )
 
 // OrderResult holds the response from the accrual service for a given order.
@@ -39,24 +42,49 @@ var ErrNotRegistered = fmt.Errorf("order not registered in accrual system")
 // Client is an HTTP client for the accrual calculation service.
 type Client struct {
 	baseURL    string
-	httpClient *http.Client
+	httpClient *retryablehttp.Client
 }
 
 // NewClient creates a new accrual Client targeting the given base URL.
+// The client will automatically retry on transient errors (5xx, connection issues)
+// up to 3 times with exponential backoff.
 func NewClient(baseURL string) *Client {
-	return &Client{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+	rc := retryablehttp.NewClient()
+	rc.RetryMax = 3
+	rc.RetryWaitMin = 500 * time.Millisecond
+	rc.RetryWaitMax = 5 * time.Second
+	rc.HTTPClient = &http.Client{Timeout: 10 * time.Second}
+	rc.Logger = nil // silence default stdlib logger
+
+	// Only retry on connection errors and 5xx; not on 429 (handled manually).
+	rc.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
+		if err != nil {
+			return true, nil
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return false, nil
+		}
+		return retryablehttp.DefaultRetryPolicy(ctx, resp, err)
 	}
+
+	return &Client{
+		baseURL:    baseURL,
+		httpClient: rc,
+	}
+}
+
+// NewClientWithLogger creates a Client that logs retry attempts via zap.
+func NewClientWithLogger(baseURL string, log *zap.Logger) *Client {
+	c := NewClient(baseURL)
+	c.httpClient.Logger = &zapRetryLogger{log: log.Sugar()}
+	return c
 }
 
 // GetOrder fetches the accrual status for the given order number.
 // Returns ErrRateLimit on 429 and ErrNotRegistered on 204.
 func (c *Client) GetOrder(ctx context.Context, number string) (*OrderResult, error) {
 	url := fmt.Sprintf("%s/api/orders/%s", c.baseURL, number)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -97,4 +125,22 @@ func parseRetryAfter(header string) time.Duration {
 		return 60 * time.Second
 	}
 	return time.Duration(secs) * time.Second
+}
+
+// zapRetryLogger adapts zap.SugaredLogger to retryablehttp.LeveledLogger.
+type zapRetryLogger struct {
+	log *zap.SugaredLogger
+}
+
+func (l *zapRetryLogger) Error(msg string, keysAndValues ...interface{}) {
+	l.log.Errorw(msg, keysAndValues...)
+}
+func (l *zapRetryLogger) Warn(msg string, keysAndValues ...interface{}) {
+	l.log.Warnw(msg, keysAndValues...)
+}
+func (l *zapRetryLogger) Info(msg string, keysAndValues ...interface{}) {
+	l.log.Infow(msg, keysAndValues...)
+}
+func (l *zapRetryLogger) Debug(msg string, keysAndValues ...interface{}) {
+	l.log.Debugw(msg, keysAndValues...)
 }

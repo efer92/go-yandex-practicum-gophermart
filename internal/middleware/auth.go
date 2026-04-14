@@ -14,8 +14,8 @@ const userIDKey contextKey = 0
 
 // TokenValidator is the subset of AuthService used by the auth middleware.
 type TokenValidator interface {
-	// ValidateToken parses and validates a JWT token, returning the user ID.
-	ValidateToken(tokenStr string) (int64, error)
+	// ValidateToken parses and validates a JWT token, returning the user ID as a string.
+	ValidateToken(tokenStr string) (string, error)
 }
 
 // Auth returns middleware that extracts and validates a JWT token from the
@@ -44,18 +44,17 @@ func Auth(validator TokenValidator) func(http.Handler) http.Handler {
 }
 
 // UserIDFromCtx retrieves the authenticated user ID from the context.
-// Returns 0 if no user ID is present (i.e., on unauthenticated routes).
-func UserIDFromCtx(ctx context.Context) int64 {
-	id, _ := ctx.Value(userIDKey).(int64)
+// Returns an empty string if no user ID is present (i.e., on unauthenticated routes).
+func UserIDFromCtx(ctx context.Context) string {
+	id, _ := ctx.Value(userIDKey).(string)
 	return id
 }
 
 // WithUserID returns a context with the given user ID injected.
 // This is intended for use in tests and server-side helpers.
-func WithUserID(ctx context.Context, userID int64) context.Context {
+func WithUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, userIDKey, userID)
 }
-
 
 // extractToken returns the raw JWT string from the Authorization header or cookie.
 func extractToken(r *http.Request) string {

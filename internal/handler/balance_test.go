@@ -38,7 +38,7 @@ func TestGetBalanceHandler_OK(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/balance", nil)
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.GetBalance(rr, req)
 
@@ -58,7 +58,7 @@ func TestGetBalanceHandler_InternalError(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/balance", nil)
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.GetBalance(rr, req)
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -77,7 +77,7 @@ func TestWithdrawHandler_OK(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", withdrawBody("2377225624", 100))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
@@ -93,7 +93,7 @@ func TestWithdrawHandler_InsufficientBalance(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", withdrawBody("2377225624", 999999))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, req)
 	assert.Equal(t, http.StatusPaymentRequired, rr.Code)
@@ -109,7 +109,7 @@ func TestWithdrawHandler_InvalidOrder(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", withdrawBody("1234567890", 10))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, req)
 	assert.Equal(t, http.StatusUnprocessableEntity, rr.Code)
@@ -119,7 +119,7 @@ func TestWithdrawHandler_InvalidOrder(t *testing.T) {
 func TestWithdrawHandler_BadRequest(t *testing.T) {
 	h := handler.NewBalanceHandler(&mockBalanceProvider{})
 	req := httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", bytes.NewBufferString("bad"))
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, req)
 	assert.Equal(t, http.StatusBadRequest, rr.Code)

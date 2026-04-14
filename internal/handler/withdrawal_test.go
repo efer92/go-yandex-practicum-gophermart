@@ -34,7 +34,7 @@ func TestListWithdrawalsHandler_OK(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/withdrawals", nil)
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.ListWithdrawals(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
@@ -50,7 +50,7 @@ func TestListWithdrawalsHandler_NoContent(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/withdrawals", nil)
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.ListWithdrawals(rr, req)
 	assert.Equal(t, http.StatusNoContent, rr.Code)
@@ -65,7 +65,7 @@ func TestListWithdrawalsHandler_InternalError(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/withdrawals", nil)
-	req = req.WithContext(mw.WithUserID(req.Context(), 1))
+	req = req.WithContext(mw.WithUserID(req.Context(), "1"))
 	rr := httptest.NewRecorder()
 	h.ListWithdrawals(rr, req)
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)

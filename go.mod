@@ -1,6 +1,6 @@
 module gophermart
 
-go 1.25.7
+go 1.26
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5
@@ -12,8 +12,12 @@ require (
 	golang.org/x/crypto v0.50.0
 )
 
+require go.uber.org/mock v0.6.0 // indirect
+
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect

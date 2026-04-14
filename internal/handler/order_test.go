@@ -29,7 +29,7 @@ func (m *mockOrderProvider) ListOrders(ctx context.Context, userID int64) ([]*do
 }
 
 // withUserID injects a user ID into the request context (simulates auth middleware).
-func withUserID(r *http.Request, userID int64) *http.Request {
+func withUserID(r *http.Request, userID string) *http.Request {
 	ctx := mw.WithUserID(r.Context(), userID)
 	return r.WithContext(ctx)
 }
@@ -43,7 +43,7 @@ func TestUploadOrder_Accepted(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/orders", strings.NewReader("12345678903"))
-	req = withUserID(req, 1)
+	req = withUserID(req, "1")
 	rr := httptest.NewRecorder()
 	h.UploadOrder(rr, req)
 	assert.Equal(t, http.StatusAccepted, rr.Code)
@@ -58,7 +58,7 @@ func TestUploadOrder_AlreadyOwned(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/orders", strings.NewReader("12345678903"))
-	req = withUserID(req, 1)
+	req = withUserID(req, "1")
 	rr := httptest.NewRecorder()
 	h.UploadOrder(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
@@ -73,7 +73,7 @@ func TestUploadOrder_Conflict(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/orders", strings.NewReader("12345678903"))
-	req = withUserID(req, 1)
+	req = withUserID(req, "1")
 	rr := httptest.NewRecorder()
 	h.UploadOrder(rr, req)
 	assert.Equal(t, http.StatusConflict, rr.Code)
@@ -88,7 +88,7 @@ func TestUploadOrder_InvalidNumber(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/orders", strings.NewReader("1234567890"))
-	req = withUserID(req, 1)
+	req = withUserID(req, "1")
 	rr := httptest.NewRecorder()
 	h.UploadOrder(rr, req)
 	assert.Equal(t, http.StatusUnprocessableEntity, rr.Code)
@@ -98,7 +98,7 @@ func TestUploadOrder_InvalidNumber(t *testing.T) {
 func TestUploadOrder_EmptyBody(t *testing.T) {
 	h := handler.NewOrderHandler(&mockOrderProvider{})
 	req := httptest.NewRequest(http.MethodPost, "/api/user/orders", strings.NewReader(""))
-	req = withUserID(req, 1)
+	req = withUserID(req, "1")
 	rr := httptest.NewRecorder()
 	h.UploadOrder(rr, req)
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
@@ -116,7 +116,7 @@ func TestListOrders_OK(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/orders", nil)
-	req = withUserID(req, 1)
+	req = withUserID(req, "1")
 	rr := httptest.NewRecorder()
 	h.ListOrders(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
@@ -132,7 +132,7 @@ func TestListOrders_NoContent(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/orders", nil)
-	req = withUserID(req, 1)
+	req = withUserID(req, "1")
 	rr := httptest.NewRecorder()
 	h.ListOrders(rr, req)
 	assert.Equal(t, http.StatusNoContent, rr.Code)

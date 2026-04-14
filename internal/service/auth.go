@@ -72,8 +72,8 @@ func (s *AuthService) Login(ctx context.Context, login, password string) (string
 	return s.issueToken(user.ID)
 }
 
-// ValidateToken parses and validates a JWT token string, returning the user ID.
-func (s *AuthService) ValidateToken(tokenStr string) (int64, error) {
+// ValidateToken parses and validates a JWT token string, returning the user ID as a string.
+func (s *AuthService) ValidateToken(tokenStr string) (string, error) {
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -81,24 +81,22 @@ func (s *AuthService) ValidateToken(tokenStr string) (int64, error) {
 		return s.jwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		return 0, fmt.Errorf("invalid token: %w", err)
+		return "", fmt.Errorf("invalid token: %w", err)
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return 0, errors.New("invalid token claims")
+		return "", errors.New("invalid token claims")
 	}
 
 	sub, err := claims.GetSubject()
 	if err != nil {
-		return 0, fmt.Errorf("get subject: %w", err)
+		return "", fmt.Errorf("get subject: %w", err)
 	}
-
-	var userID int64
-	if _, err := fmt.Sscan(sub, &userID); err != nil {
-		return 0, fmt.Errorf("parse user id: %w", err)
+	if sub == "" {
+		return "", errors.New("empty subject in token")
 	}
-	return userID, nil
+	return sub, nil
 }
 
 // issueToken creates a signed JWT for the given user ID.

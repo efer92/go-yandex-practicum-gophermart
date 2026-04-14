@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,7 +55,11 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	middleware.AddLogFields(r, zap.String("order", number))
-	userID := middleware.UserIDFromCtx(r.Context())
+	userID, err := strconv.ParseInt(middleware.UserIDFromCtx(r.Context()), 10, 64)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	_, err = h.orders.SubmitOrder(r.Context(), userID, number)
 	if err != nil {
 		switch {
@@ -75,7 +80,11 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 
 // ListOrders handles GET /api/user/orders.
 func (h *OrderHandler) ListOrders(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserIDFromCtx(r.Context())
+	userID, err := strconv.ParseInt(middleware.UserIDFromCtx(r.Context()), 10, 64)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	orders, err := h.orders.ListOrders(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
